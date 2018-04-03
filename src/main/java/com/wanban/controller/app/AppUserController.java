@@ -41,7 +41,7 @@ public class AppUserController
 
     @Autowired
     private UserService userService;
-//查询所有用户
+    //查询所有用户
     @RequestMapping(value = "/getAllUser",produces = "application/json;charset=UTF-8")
     @ResponseBody
     public String getAllUser(){
@@ -50,12 +50,12 @@ public class AppUserController
         return list !=null?objectToJson(list): "0";
     }
 
-   //查询个人信息
+    //查询个人信息
     @RequestMapping(value = "/findUser", method = RequestMethod.GET, produces = "application/json;charset=UTF-8")
     @ResponseBody
     public String findUser(@RequestParam(value = "userId", required = true) int userId) {
         User user = userService.getUser(userId);
-       return user !=null?objectToJson(user): "0";
+        return user !=null?objectToJson(user): "0";
     }
 
     //修改个人信息  根据主键修改用户资料(不包括密码)
@@ -64,11 +64,11 @@ public class AppUserController
     @RequestMapping(value = "/updateUser", method = RequestMethod.POST, produces = "application/json;charset=UTF-8")
     public int updateUser(@RequestParam("imageFile") MultipartFile imageFile,User user, HttpServletRequest request)throws Exception{
 
-            String filePath = request.getServletContext().getRealPath("/");
-            String imageName = com.wanban.utils.DateUtil.getCurrentDateStr() + "."
-                    + imageFile.getOriginalFilename().split("\\.")[1];
-            imageFile.transferTo(new File(filePath + "static/levelImages/"
-                    + imageName));
+        String filePath = request.getServletContext().getRealPath("/");
+        String imageName = com.wanban.utils.DateUtil.getCurrentDateStr() + "."
+                + imageFile.getOriginalFilename().split("\\.")[1];
+        imageFile.transferTo(new File(filePath + "static/levelImages/"
+                + imageName));
         if (!imageFile.isEmpty()) {
             File oldFile = new File(filePath+ "static/levelImages/"+user.getImageName());
             oldFile.delete();
@@ -77,102 +77,85 @@ public class AppUserController
         return userService.updateUser(user)>0 ? 1:0;
     }
 
-    @RequestMapping(value = "/regist",method = RequestMethod.GET)
+    //用户注册
+    @RequestMapping(value = "/register",method = RequestMethod.POST,produces = "application/json;charset=UTF-8")
     @ResponseBody
-    public void register(HttpServletRequest request,HttpServletResponse response,@RequestParam("username")String username,@RequestParam("password")String password,@RequestParam("email")String email,@RequestParam("phone")String phone) throws IOException {
+    public String register(HttpServletRequest request,HttpServletResponse response,@RequestParam("username")String username,@RequestParam("password")String password,@RequestParam("confirmpassword")String confirmpassword,@RequestParam("phone")String phone) throws IOException {
 
-        request.setCharacterEncoding("UTF-8");
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType("application/json");
-
-
-        password = MdUtil.md5(password);
-        User User = new User();
-        User.setUserName(username);
-        User.setPassword(password);
-        User.setEmail(email);
-        User.setPhone(phone);
-
-        PrintWriter out = null;
-        JSONObject json = new JSONObject();
-
-        try {
-            out = response.getWriter();
-            if (username == null || !userService.checkRegisterUsername(User.getUserName())) {
-                System.out.print("用户名重复或空");
-            }
-            if (email == null || !userService.checkRegisterEmail(User.getEmail())) {
-                System.out.print("邮箱重复或空");
-            }
-            if (phone == null || !userService.checkRegisterPhone(User.getPhone())) {
-                System.out.print("手机号重复或空");
-            } else {
-                userService.addUser(User);
-                IMRegisterUtil.createUser(User);
-                json.put("status",1);
-                out.write(json.toString());
-                System.out.print("注册成功");
-            }
-        }catch (Exception e)
+        if(username == null || username.length() < 3)
         {
-            e.printStackTrace();
-            json.put("status",0);
-            out.write(json.toString());
-        }finally {
-            out.flush();
-            out.close();
+            return objectToJson("0:用户名至少3位！");
         }
 
-    }
+        if(password == null || confirmpassword == null)
+        {
+            return objectToJson("0:请输入密码！");
+        }
 
-    /**
-     * 存放“用户名：token”键值对
-     */
-    public static Map<String,String> tokenMap=new HashMap<String,String>();
-    /**
-     * 存放“token:User”键值对
-     */
-    public static Map<String,User> loginUserMap=new HashMap<String,User>();
 
-    @RequestMapping(value = "/login",method = RequestMethod.GET)
-    @ResponseBody
-    public String login(HttpServletRequest request, HttpServletResponse response, @RequestParam("username")String username, @RequestParam("password")String password, ModelAndView mv, HttpSession session) throws Exception {
 
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType("application/json");
+        if(!userService.checkRegisterPhone(phone))
+        {
+            return objectToJson("0:电话号码已被注册！");
+        }
 
-        System.out.print(username + "------" + password);
+        if(!userService.checkRegisterUsername(username))
+        {
+            return objectToJson("0:用户名重复！");
+        }
 
-        String token = tokenMap.get(username);
-        password = MdUtil.md5(password);
-        User User = userService.checkLogin(username,password);
-        JSONObject json = new JSONObject();
-        if(token == null)
+        if(!password.equals(confirmpassword))
+        {
+            return objectToJson("0:密码不一致");
+        }
+
+        User User = new User();
+
+        if(userService.findUserByName(username) == null)
         {
             User.setUserName(username);
-            User.setPassword(password);
-            System.out.print("首次登录");
+            User.setPassword(MdUtil.md5(password));
+            User.setPhone(phone);
+            userService.addUser(User);
+            IMRegisterUtil.createUser(User);
+            return objectToJson("1");
         }
-        if(!User.getPassword().equals(password))
+        else
         {
-            User = loginUserMap.get(token);
-            loginUserMap.remove(token);
+            return objectToJson("0");
         }
-        token = MdUtil.md5(username + password + new Date().getTime());
-        loginUserMap.put(token,User);
-        tokenMap.put(username,token);
-        if(User != null)
-        {
-            session.setAttribute("User", User);
-            json.put("User",User);
-        }else
-        {
-            System.out.print("登录失败，账号或密码错误！");
-        }
-
-        return token;
     }
 
+    //登陆功能
+    @RequestMapping(value = "/login",method = {RequestMethod.GET,RequestMethod.POST},produces = "application/json;charset=UTF-8")
+    @ResponseBody
+    public String login(HttpServletRequest request, HttpServletResponse response, @RequestParam("username")String username, @RequestParam("password")String password, ModelAndView mv, HttpSession session) throws Exception {
+        password = MdUtil.md5(password);
+        User User = userService.checkLogin(username,password);
+        return User != null?objectToJson(User):"0";
+    }
+
+    //修改密码功能
+    @RequestMapping(value = "/updatepassword",method = RequestMethod.POST,produces = "application/json;charset=UTF-8")
+    @ResponseBody
+    public String updatepassword(HttpServletRequest request,HttpServletResponse response,@RequestParam("username")String username,@RequestParam("oldpw")String oldpw,@RequestParam("newpw")String newpw)
+    {
+        User user = userService.findUserByName(username);
+        oldpw = MdUtil.md5(oldpw);
+        if(!oldpw.equals(user.getPassword()))
+        {
+            return objectToJson("0:密码不一致");
+        }
+        else
+        {
+            user.setPassword(newpw);
+            userService.updateUser(user);
+            return "1";
+        }
+    }
+
+
+    //注销
     @RequestMapping(value = "/loginout",method = RequestMethod.DELETE)
     public void loginout(HttpServletRequest request)
     {
@@ -180,6 +163,8 @@ public class AppUserController
         session.removeAttribute("user");
         session.removeAttribute("username");
     }
+
+
 
     @WebServlet("/sendSms")
     @ResponseBody
